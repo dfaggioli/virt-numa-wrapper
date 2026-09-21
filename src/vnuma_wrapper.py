@@ -339,9 +339,23 @@ def main():
     
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        pnuma_str = res.stdout.strip().split('\n')[-1].strip()
+        # Extract the last non-empty line from stdout
+        lines = [line.strip() for line in res.stdout.strip().split('\n') if line.strip()]
+        if not lines:
+            print("Error: numa-preplace returned empty output.", file=sys.stderr)
+            sys.exit(1)
+            
+        pnuma_str = lines[-1]
     except subprocess.CalledProcessError as e:
         print(f"Error executing numa-preplace: {e.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+    pnuma_nodes = parse_nodeset(pnuma_str)
+    
+    # Validate that numa-preplace actually advised at least one valid node.
+    # Abort if the topology string implies 0 nodes (e.g., empty string or invalid format).
+    if not pnuma_nodes or pnuma_str == "0":
+        print(f"Error: numa-preplace advised 0 nodes (output: '{pnuma_str}'). Aborting.", file=sys.stderr)
         sys.exit(1)
 
     inject_topology(root, pnuma_str, get_sysfs_cpulist)
