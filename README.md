@@ -47,7 +47,7 @@ Usage:
   
 Arguments & Options:  
   -h, --help           Show this help message and exit.  
-  -f, --force          Force undefine the VM before defining it.  
-                       Ignored if not in 'define mode'.  
+  -f, --force          Force undefine the VM before defining it (ignored if not in 'define mode').  
+  -v, --verbose        Enable verbose output (usefull for debugging).  
   <domain.xml>         Parses input and prints modified XML to stdout.  
   define <domain.xml>  Deploys the modified XML directly via virsh.

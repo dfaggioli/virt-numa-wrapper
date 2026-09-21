@@ -275,6 +275,7 @@ Arguments & Options:
   -h, --help           Show this help message and exit.
   -f, --force          Force undefine the VM before defining it.
                        Ignored if not in 'define mode'.
+  -v, --verbose        Enable verbose output (useful for debugging).
   <domain.xml>         Parses input and prints modified XML to stdout.
   define <domain.xml>  Deploys the modified XML directly via virsh.
 
@@ -296,6 +297,11 @@ def main():
     for flag in ["-f", "--force"]:
         if flag in sys.argv:
             force = True
+            sys.argv.remove(flag)
+
+    for flag in ["-v", "--verbose"]:
+        if flag in sys.argv:
+            verbose = True
             sys.argv.remove(flag)
 
     if len(sys.argv) < 2:
@@ -336,9 +342,18 @@ def main():
     cmd = ["numa-preplace", "-w", f"{vcpus}:{mem_kib // 1024}"]
     if hp_size > 0: 
         cmd.extend(["-H", str(hp_size)])
+
+    if verbose:
+        print(f"Executing: {' '.join(cmd)}", file=sys.stderr)
     
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+        if verbose:
+            print("--- numa-preplace stdout ---", file=sys.stderr)
+            print(res.stdout.strip(), file=sys.stderr)
+            print("----------------------------", file=sys.stderr)
+
         # Extract the last non-empty line from stdout
         lines = [line.strip() for line in res.stdout.strip().split('\n') if line.strip()]
         if not lines:
