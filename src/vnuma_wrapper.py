@@ -38,7 +38,6 @@
 
 import os
 import sys
-import argparse
 import subprocess
 import tempfile
 import re
@@ -261,28 +260,68 @@ def virsh_define(xml_payload, domain_name, force=False):
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
+def print_usage(out_stream=sys.stdout):
+    help_text = """Libvirt vNUMA Topology Injector Wrapper
+
+This command analyzes the VM's hardware requirements (vCPU, RAM, HugePages)
+and queries 'numa-preplace' for obtaining an efficent pre-placement of the
+VM itself on the host's NUMA nodes. Then, it generates and injects a matching
+vNUMA topology and host-level pinning into the XML config file.
+
+Usage:
+  vnuma_wrapper.py [-h|--help] [[-f|--force] [define]] <domain.xml>
+
+Arguments & Options:
+  -h, --help           Show this help message and exit.
+  -f, --force          Force undefine the VM before defining it.
+                       Ignored if not in 'define mode'.
+  <domain.xml>         Parses input and prints modified XML to stdout.
+  define <domain.xml>  Deploys the modified XML directly via virsh.
+
+### DISCLAIMER: Proof of Concept ###
+This software is provided purely as a demonstrative tool and proof-of-concept.
+Its specific purpose is to illustrate how to dynamically calculate and inject
+a Virtual NUMA topology into a the XML configuration of a VM, based on hardware
+pre-placement results. There is no guarantee of correctness, functionality,
+security, or ongoing support. USE AT YOUR OWN RISK.
+"""
+    print(help_text, file=out_stream)
+
 def main():
-    parser = argparse.ArgumentParser(description="KVM/QEMU XML vNUMA Topology Injector")
-    parser.add_argument("-f", "--force", action="store_true", 
-                        help="Force undefine (keeping NVRAM) before define (only with 'define' mode)")
-    parser.add_argument("args", nargs="+", help="[define] <domain.xml>")
-    
-    args = parser.parse_args()
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print_usage()
+        sys.exit(0)
+
+    force = False
+    for flag in ["-f", "--force"]:
+        if flag in sys.argv:
+            force = True
+            sys.argv.remove(flag)
+
+    if len(sys.argv) < 2:
+        print_usage(sys.stderr)
+        sys.exit(1)
 
     mode = "stdout"
-    if args.args[0] == "define":
-        if len(args.args) < 2:
-            print(f"Usage: {sys.argv[0]} define [-f] <domain.xml>", file=sys.stderr)
+    if sys.argv[1] == "define":
+        if len(sys.argv) < 3:
+            print("Error: Missing <domain.xml> for 'define' mode.\n", file=sys.stderr)
+            print_usage(sys.stderr)
             sys.exit(1)
-        xml_file = args.args[1]
+        xml_file = sys.argv[2]
         mode = "define"
     else:
-        xml_file = args.args[0]
-        if args.force:
+        xml_file = sys.argv[1]
+        if force:
             print("Warning: -f/--force flag ignored when not in 'define' mode.", file=sys.stderr)
 
     xml_parser = ET.XMLParser(remove_blank_text=False)
-    tree = ET.parse(xml_file, xml_parser)
+    try:
+        tree = ET.parse(xml_file, xml_parser)
+    except Exception as e:
+        print(f"Error parsing XML: {e}", file=sys.stderr)
+        sys.exit(1)
+
     root = tree.getroot()
 
     # The domain name is necessary for undefining it
@@ -309,7 +348,7 @@ def main():
     final_xml = serialize_libvirt_xml(root)
 
     if mode == "define":
-        virsh_define(final_xml, domain_name, force=args.force)
+        virsh_define(final_xml, domain_name, force=force)
     else:
         sys.stdout.buffer.write(final_xml.encode("utf-8"))
 
