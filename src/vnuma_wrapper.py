@@ -49,6 +49,10 @@ except ImportError:
     sys.exit(1)
 
 def get_sysfs_cpulist(node_id):
+    """
+    Retrieves the physical CPU core mask associated with a specific host NUMA
+    node directly from the kernel sysfs interface.
+    """
     path = f"/sys/devices/system/node/node{node_id}/cpulist"
     try:
         with open(path, "r") as f:
@@ -57,6 +61,10 @@ def get_sysfs_cpulist(node_id):
         return "0"
 
 def parse_nodeset(nstr):
+    """
+    Expands a node range string (e.g., '0,2-4') into a flat list of discrete
+    integer node IDs.
+    """
     nodes = []
     for part in nstr.split(","):
         if "-" in part:
@@ -67,6 +75,10 @@ def parse_nodeset(nstr):
     return nodes
 
 def indent_node(elem, level=1):
+    """
+    Applies structural whitespace formatting to newly instantiated lxml
+    ElementTree nodes to guarantee 'diff-minimal', human-readable XML output.
+    """
     indentation = "\n" + "  " * level
     if len(elem):
         if not elem.text or not elem.text.strip():
@@ -82,6 +94,11 @@ def indent_node(elem, level=1):
             elem.tail = indentation
 
 def extract_vm_params(root):
+    """
+    Parses the domain tree of the provided XML config file to identify core
+    virtual hardware requirements (vCPUs, RAM size) and normalizes existing
+    HugePages configurations by stripping legacy guest node affinities.
+    """
     vcpu_elem = root.find("./vcpu")
     mem_elem = root.find("./memory")
     if vcpu_elem is None or mem_elem is None:
@@ -113,6 +130,12 @@ def extract_vm_params(root):
     return vcpus, mem_kib, hp_size_mb
 
 def inject_topology(root, pnuma_str, sysfs_mapper_func):
+    """
+    Injects an ACPI MADT/SRAT-compliant virtual topology into the XML.
+    Enforces a deterministic mapping between virtual sockets and vNUMA
+    cells, and establishes strict host-level pinning for both memory
+    and vCPUs.
+    """
     vcpus, mem_kib, _ = extract_vm_params(root)
     pnuma_nodes = parse_nodeset(pnuma_str)
     num_vnodes = len(pnuma_nodes)
@@ -141,8 +164,7 @@ def inject_topology(root, pnuma_str, sysfs_mapper_func):
     # Inject a CPU topology that is coherent with the vNUMA one
     if vcpus % num_vnodes != 0:
         print(f"Warning: Asymmetric topology. {vcpus} vCPUs not divisible by {num_vnodes} NUMA nodes.", file=sys.stderr)
-        # Fallback a 1 core/vCPU (rischioso per QEMU strict topology checks)
-        # Idealmente numa-preplace non restituisce nodi asimmetrici per allocazioni simmetriche
+        # Fallback to a flat 1 vcpu = 1 socket. Makes QEMU happy but might crash the guest... :-(
         sockets, cores, threads = vcpus, 1, 1
     else:
         sockets, cores, threads = num_vnodes, vcpus // num_vnodes, 1
@@ -191,6 +213,11 @@ def inject_topology(root, pnuma_str, sysfs_mapper_func):
     cputune.tail = "\n  "
 
 def serialize_libvirt_xml(root):
+    """
+    Serializes the modified lxml ElementTree into a raw string, strictly
+    enforcing libvirt's single-quote attribute formatting and stripping
+    standard XML declarations.
+    """
     raw_str = ET.tostring(root, encoding="utf-8", xml_declaration=False).decode("utf-8")
     def quote_match(m):
         attr, val = m.group(1), m.group(2)
