@@ -51,3 +51,49 @@ Arguments & Options:
   -v, --verbose        Enable verbose output (usefull for debugging).  
   define               [Re]Defines the modified XML as a VM, via virsh.  
   <domain.xml>|<stdin> Parses input file and prints modified XML to stdout (reads from stdin if omitted).  
+
+# USAGE EXAMPLES
+
+Read a domain XML file and print the modified configuration to standard output (or into a file):
+
+```bash
+./vnuma_wrapper.py /path/to/domain.xml
+./vnuma_wrapper.py /path/to/domain.xml > /tmp/domain-modified.xml
+
+```
+
+Same, but printing executed commands and raw tools' output to stderr:
+
+```bash
+./vnuma_wrapper.py -v /path/to/domain.xml > /tmp/domain-modified.xml
+
+```
+
+Deploy the modified XML configuration directly to libvirt via `virsh define`:
+
+```bash
+./vnuma_wrapper.py define /path/to/domain.xml
+
+```
+
+Force re-definition of an existing domain by performing a safe undefine followed by define:
+
+```bash
+./vnuma_wrapper.py -f define /path/to/domain.xml
+
+```
+
+Read domain XML from standard input and output the modified configuration:
+
+```bash
+virsh dumpxml my-vm | ./vnuma_wrapper.py >
+virsh dumpxml my-vm | ./vnuma_wrapper.py > /tmp/domain-modified.xml
+
+```
+
+Read domain XML from standard input and (force) deploy it directly via libvirt:
+
+```bash
+virsh dumpxml my-vm | ./vnuma_wrapper.py define
+virsh dumpxml my-vm | ./vnuma_wrapper.py -f define
+```
