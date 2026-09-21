@@ -1,9 +1,47 @@
 #!/usr/bin/env python3
+#
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Copyright (C) 2026 Dario Faggioli
+# Copyright (C) 2026 SUSE LLC
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License version 2 as
+# published by the Free Software Foundation.
+#
+# THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+### DISCLAIMER: Proof of Concept ###
+#
+# This software is provided purely as a demonstrative tool and as a
+# proof-of-concept. Its main purpose is to illustrate how dynamically
+# calculating and injecting a Virtual NUMA (vNUMA) topology into a KVM/QEMU
+# virtual machine XML configuration, basing on automatic NUMA pre-placement on
+# the host hardware, can be done.
+#
+# The primary goal is to offer technical insights and, maybe, a reference for
+# developers aiming at adding such a feature into their own orchestration
+# platforms, middleweres, management stacks, etc.
+#
+# This project is not actively maintained for production use. There is no
+# guarantee of correctness, integrity, security or ongoing support.
+#
+# Use it at your own risk!
+#
+### DISCLAIMER: Proof of Concept ###
+
 import sys
 import os
 import subprocess
 import tempfile
 import re
+
 try:
     from lxml import etree as ET
 except ImportError:
