@@ -229,7 +229,7 @@ def serialize_libvirt_xml(root):
 def virsh_define(xml_payload, domain_name, force=False):
     """
     Define the VM in libvirt, via virsh. If forced to, undefines it (hopefully)
-    cleanly and safely first, and the redefine it.
+    cleanly and safely first, and then redefines it.
     """
     if force:
         res = subprocess.run(["virsh", "dominfo", domain_name], capture_output=True)
@@ -264,25 +264,26 @@ def print_usage(out_stream=sys.stdout):
     help_text = """Libvirt vNUMA Topology Injector Wrapper
 
 This command analyzes the VM's hardware requirements (vCPU, RAM, HugePages)
-and queries 'numa-preplace' for obtaining an efficent pre-placement of the
+and queries 'numa-preplace' for obtaining an efficient pre-placement of the
 VM itself on the host's NUMA nodes. Then, it generates and injects a matching
 vNUMA topology and host-level pinning into the XML config file.
 
 Usage:
-  vnuma_wrapper.py [-h|--help] [[-f|--force] [define]] <domain.xml>
+  vnuma_wrapper.py [-h|--help] [-f|--force] [-v|--verbose] [define] <domain.xml>|<stdin>
 
 Arguments & Options:
   -h, --help           Show this help message and exit.
   -f, --force          Force undefine the VM before defining it.
                        Ignored if not in 'define mode'.
   -v, --verbose        Enable verbose output (useful for debugging).
-  <domain.xml>         Parses input and prints modified XML to stdout.
-  define <domain.xml>  Deploys the modified XML directly via virsh.
+  define               [Re]Defines the modified XML as a VM, via virsh.
+  <domain.xml>|<stdin> Parses input file and prints modified XML to stdout.
+                       Reads from stdin if omitted.
 
 ### DISCLAIMER: Proof of Concept ###
 This software is provided purely as a demonstrative tool and proof-of-concept.
 Its specific purpose is to illustrate how to dynamically calculate and inject
-a Virtual NUMA topology into a the XML configuration of a VM, based on hardware
+a Virtual NUMA topology into the XML configuration of a VM, based on hardware
 pre-placement results. There is no guarantee of correctness, functionality,
 security, or ongoing support. USE AT YOUR OWN RISK.
 """
@@ -299,43 +300,44 @@ def main():
             force = True
             sys.argv.remove(flag)
 
+    verbose = False
     for flag in ["-v", "--verbose"]:
         if flag in sys.argv:
             verbose = True
             sys.argv.remove(flag)
 
-    if len(sys.argv) < 2:
-        print_usage(sys.stderr)
-        sys.exit(1)
-
     mode = "stdout"
-    if sys.argv[1] == "define":
-        if len(sys.argv) < 3:
-            print("Error: Missing <domain.xml> for 'define' mode.\n", file=sys.stderr)
-            print_usage(sys.stderr)
-            sys.exit(1)
-        xml_file = sys.argv[2]
+    xml_file = None
+
+    if len(sys.argv) > 1 and sys.argv[1] == "define":
         mode = "define"
-    else:
+        if len(sys.argv) > 2:
+            xml_file = sys.argv[2]
+    elif len(sys.argv) > 1:
         xml_file = sys.argv[1]
+    else:
         if force:
-            print("Warning: -f/--force flag ignored when not in 'define' mode.", file=sys.stderr)
+            print("Warning: -f/--force flag ignored when reading from stdin without explicit domain context.", file=sys.stderr)
 
     xml_parser = ET.XMLParser(remove_blank_text=False)
     try:
-        tree = ET.parse(xml_file, xml_parser)
+        if xml_file:
+            tree = ET.parse(xml_file, xml_parser)
+        else:
+            tree = ET.parse(sys.stdin, xml_parser)
     except Exception as e:
         print(f"Error parsing XML: {e}", file=sys.stderr)
         sys.exit(1)
 
     root = tree.getroot()
 
-    # The domain name is necessary for undefining it
+    # The domain name is necessary for undefining it (if in define mode)
     name_elem = root.find("./name")
-    if name_elem is None:
-        print("Error: Missing <name> in XML.", file=sys.stderr)
+    domain_name = name_elem.text if name_elem is not None else None
+
+    if mode == "define" and not domain_name:
+        print("Error: Missing <name> in XML, cannot perform virsh define.", file=sys.stderr)
         sys.exit(1)
-    domain_name = name_elem.text
 
     vcpus, mem_kib, hp_size = extract_vm_params(root)
     
@@ -359,7 +361,7 @@ def main():
         if not lines:
             print("Error: numa-preplace returned empty output.", file=sys.stderr)
             sys.exit(1)
-            
+
         pnuma_str = lines[-1]
     except subprocess.CalledProcessError as e:
         print(f"Error executing numa-preplace: {e.stderr}", file=sys.stderr)
@@ -367,8 +369,7 @@ def main():
 
     pnuma_nodes = parse_nodeset(pnuma_str)
     
-    # Validate that numa-preplace actually advised at least one valid node.
-    # Abort if the topology string implies 0 nodes (e.g., empty string or invalid format).
+    # Validate that numa-preplace actually advised valid nodes.
     if not pnuma_nodes or pnuma_str == "0":
         print(f"Error: numa-preplace advised 0 nodes (output: '{pnuma_str}'). Aborting.", file=sys.stderr)
         sys.exit(1)

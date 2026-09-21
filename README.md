@@ -43,11 +43,11 @@ VM itself on the host's NUMA nodes. Then, it generates and injects a matching
 vNUMA topology and host-level pinning into the XML config file.
 
 Usage:  
-  vnuma_wrapper.py [-h|--help] [[-f|--force] [define]] <domain.xml>  
-  
+  vnuma_wrapper.py [-h|--help] [[-f|--force] [define]] <domain.xml>|<stdin>  
+
 Arguments & Options:  
   -h, --help           Show this help message and exit.  
   -f, --force          Force undefine the VM before defining it (ignored if not in 'define mode').  
   -v, --verbose        Enable verbose output (usefull for debugging).  
-  <domain.xml>         Parses input and prints modified XML to stdout.  
-  define <domain.xml>  Deploys the modified XML directly via virsh.
+  define               [Re]Defines the modified XML as a VM, via virsh.  
+  <domain.xml>|<stdin> Parses input file and prints modified XML to stdout (reads from stdin if omitted).  
