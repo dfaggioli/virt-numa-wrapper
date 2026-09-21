@@ -33,3 +33,21 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+# USAGE
+
+Libvirt vNUMA Topology Injector Wrapper
+
+This command analyzes the VM's hardware requirements (vCPU, RAM, HugePages)
+and queries 'numa-preplace' for obtaining an efficent pre-placement of the
+VM itself on the host's NUMA nodes. Then, it generates and injects a matching
+vNUMA topology and host-level pinning into the XML config file.
+
+Usage:  
+  vnuma_wrapper.py [-h|--help] [[-f|--force] [define]] <domain.xml>  
+  
+Arguments & Options:  
+  -h, --help           Show this help message and exit.  
+  -f, --force          Force undefine the VM before defining it.  
+                       Ignored if not in 'define mode'.  
+  <domain.xml>         Parses input and prints modified XML to stdout.  
+  define <domain.xml>  Deploys the modified XML directly via virsh.
