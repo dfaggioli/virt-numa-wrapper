@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+echo "Running test suite..."
+pytest -v tests/
+if [ $? -ne 0 ]; then
+    echo "Error: tests failed. Commit aborted."
+    exit 1
+fi
