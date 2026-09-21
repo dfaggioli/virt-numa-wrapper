@@ -36,8 +36,9 @@
 #
 ### DISCLAIMER: Proof of Concept ###
 
-import sys
 import os
+import sys
+import argparse
 import subprocess
 import tempfile
 import re
@@ -226,36 +227,89 @@ def serialize_libvirt_xml(root):
         return f"{attr}='{val}'"
     return re.sub(r'([\w:]+)="([^"]*)"', quote_match, raw_str).rstrip() + "\n"
 
-def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} [define] <domain.xml>", file=sys.stderr)
+def virsh_define(xml_payload, domain_name, force=False):
+    """
+    Define the VM in libvirt, via virsh. If forced to, undefines it (hopefully)
+    cleanly and safely first, and the redefine it.
+    """
+    if force:
+        res = subprocess.run(["virsh", "dominfo", domain_name], capture_output=True)
+        if res.returncode == 0:
+            print(f"Forcing re-definition. Undefining '{domain_name}' safely...", file=sys.stderr)
+            undef_res = subprocess.run(
+                ["virsh", "undefine", domain_name, "--keep-nvram"], 
+                capture_output=True, text=True
+            )
+            if undef_res.returncode != 0:
+                # Fallback attempt (e.g., for legacy BIOS VMs)
+                subprocess.run(
+                    ["virsh", "undefine", domain_name], 
+                    check=True, capture_output=True
+                )
+
+    fd, temp_path = tempfile.mkstemp(suffix=".xml", prefix="vnuma_")
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(xml_payload.encode("utf-8"))
+        
+        print(f"Defining domain via virsh...", file=sys.stderr)
+        subprocess.run(["virsh", "define", temp_path], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing virsh define: {e}", file=sys.stderr)
         sys.exit(1)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+def main():
+    parser = argparse.ArgumentParser(description="KVM/QEMU XML vNUMA Topology Injector")
+    parser.add_argument("-f", "--force", action="store_true", 
+                        help="Force undefine (keeping NVRAM) before define (only with 'define' mode)")
+    parser.add_argument("args", nargs="+", help="[define] <domain.xml>")
+    
+    args = parser.parse_args()
 
     mode = "stdout"
-    xml_file = sys.argv[2] if sys.argv[1] == "define" else sys.argv[1]
-    mode = "define" if sys.argv[1] == "define" else "stdout"
+    if args.args[0] == "define":
+        if len(args.args) < 2:
+            print(f"Usage: {sys.argv[0]} define [-f] <domain.xml>", file=sys.stderr)
+            sys.exit(1)
+        xml_file = args.args[1]
+        mode = "define"
+    else:
+        xml_file = args.args[0]
+        if args.force:
+            print("Warning: -f/--force flag ignored when not in 'define' mode.", file=sys.stderr)
 
-    parser = ET.XMLParser(remove_blank_text=False)
-    tree = ET.parse(xml_file, parser)
+    xml_parser = ET.XMLParser(remove_blank_text=False)
+    tree = ET.parse(xml_file, xml_parser)
     root = tree.getroot()
+
+    # The domain name is necessary for undefining it
+    name_elem = root.find("./name")
+    if name_elem is None:
+        print("Error: Missing <name> in XML.", file=sys.stderr)
+        sys.exit(1)
+    domain_name = name_elem.text
 
     vcpus, mem_kib, hp_size = extract_vm_params(root)
     
     cmd = ["numa-preplace", "-w", f"{vcpus}:{mem_kib // 1024}"]
-    if hp_size > 0: cmd.extend(["-H", str(hp_size)])
+    if hp_size > 0: 
+        cmd.extend(["-H", str(hp_size)])
     
-    res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    pnuma_str = res.stdout.strip().split('\n')[-1].strip()
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        pnuma_str = res.stdout.strip().split('\n')[-1].strip()
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing numa-preplace: {e.stderr}", file=sys.stderr)
+        sys.exit(1)
 
     inject_topology(root, pnuma_str, get_sysfs_cpulist)
     final_xml = serialize_libvirt_xml(root)
 
     if mode == "define":
-        fd, temp_path = tempfile.mkstemp(suffix=".xml", prefix="vnuma_")
-        with os.fdopen(fd, 'wb') as f:
-            f.write(final_xml.encode("utf-8"))
-        subprocess.run(["virsh", "define", temp_path], check=True)
-        os.remove(temp_path)
+        virsh_define(final_xml, domain_name, force=args.force)
     else:
         sys.stdout.buffer.write(final_xml.encode("utf-8"))
 
