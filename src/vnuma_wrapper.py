@@ -232,18 +232,24 @@ def virsh_define(xml_payload, domain_name, force=False):
     cleanly and safely first, and then redefines it.
     """
     if force:
-        res = subprocess.run(["virsh", "dominfo", domain_name], capture_output=True)
+        res = subprocess.run(["virsh", "dominfo", domain_name],
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
         if res.returncode == 0:
             print(f"Forcing re-definition. Undefining '{domain_name}' safely...", file=sys.stderr)
             undef_res = subprocess.run(
-                ["virsh", "undefine", domain_name, "--keep-nvram"], 
-                capture_output=True, text=True
+                ["virsh", "undefine", domain_name, "--keep-nvram"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True
             )
             if undef_res.returncode != 0:
                 # Fallback attempt (e.g., for legacy BIOS VMs)
                 subprocess.run(
-                    ["virsh", "undefine", domain_name], 
-                    check=True, capture_output=True
+                    ["virsh", "undefine", domain_name],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True
                 )
 
     fd, temp_path = tempfile.mkstemp(suffix=".xml", prefix="vnuma_")
@@ -349,7 +355,12 @@ def main():
         print(f"Executing: {' '.join(cmd)}", file=sys.stderr)
     
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        res = subprocess.run(cmd,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE,
+                             universal_newlines=True,
+                             check=True
+        )
 
         if verbose:
             print("--- numa-preplace stdout ---", file=sys.stderr)
